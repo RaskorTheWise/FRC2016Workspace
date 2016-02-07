@@ -1,9 +1,3 @@
-/*
- * MyJoystick.cpp
- */
-#include "WPILib.h"
-#include <MyJoystick.h>
-
 #define MAXBUTTONS 10
 
 Joystick* m_joystick = NULL;
@@ -14,7 +8,8 @@ MyJoystick::MyJoystick() {
 
 }
 
-MyJoystick::~MyJoystick() {
+MyJoystick::~MyJoystick()
+{
 	if( m_joystick != NULL)
 	{
 		for (int i = 0; i < MAXBUTTONS; i++)
@@ -55,6 +50,17 @@ bool MyJoystick::readButton(int buttonNumber){
 
 	return buttonValueArray[buttonNumber - 1];
 }
+
+float MyJoystick::checkLeftStickX()
+{
+	return m_joystick->GetX();
+}
+
+float MyJoystick::checkLeftStickY()
+{
+	return m_joystick->GetY()*-1;
+}
+
 
 
 
