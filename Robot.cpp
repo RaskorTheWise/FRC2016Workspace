@@ -1,4 +1,5 @@
 #include "WPILib.h"
+#include "WPILib.h"
 #include "Joystick.h"
 #include "MyJoystick.h"
 
@@ -132,37 +133,51 @@ public:
 		perseusDrive.TankDrive(leftStick, rightStick);
 		handheld->readJoystick();
 
-		RunRaise(handheld->readButton(6));
-		RunLower(handheld->readButton(8));
+		RunRaise_Button(handheld->readButton(6));
+		RunLower_Button(handheld->readButton(8));
 		RunCollect(handheld->readButton(5));
 		RunFire(handheld->readButton(7));
 	}
 
-	void RunRaise(bool raiseButton)
+	void RunRaise_Button(bool raiseButton)
 	{
-		if (raiseButton == true)
+		if (raiseButton)
 		{
-			while (raiseLimitSwitch != true)
+			while (!raiseLimitSwitch)
 			{
 				raiseSpark.Set(0.1); // Will set to negative if necessary
 			}
+			raiseSpark.Set(0.0);
 		}
 	}
 
-	void RunLower(bool lowerButton)
+	void RunLower_Button(bool lowerButton)
 	{
-		if (lowerButton == true)
+		if (lowerButton)
 		{
-			while (lowerLimitSwitch != true)
+			while (!lowerLimitSwitch)
 			{
 				raiseSpark.Set(-0.1); // Will set to positive if necessary
 			}
+			raiseSpark.Set(0.0);
+		}
+	}
+
+	void RunAim(float yAxis)
+	{
+		while (yAxis > 0.0)
+		{
+			raiseSpark.Set(0.1);
+		}
+		while (yAxis < 0.0)
+		{
+			raiseSpark.Set(-0.1);
 		}
 	}
 
 	void RunCollect(bool collectButton)
 	{
-		if (collectButton == true)
+		if (collectButton)
 		{
 			collectSpark.Set(-0.1); // Will set to positive if necessary
 		}
@@ -170,9 +185,11 @@ public:
 
 	void RunFire(bool fireButton)
 	{
-		if (fireButton == true)
+		if (fireButton)
 		{
 			collectSpark.Set(0.1); // Will set to negative if necessary
+			Wait(0.5);
+			collectSpark.Set(0.0);
 		}
 	}
 
