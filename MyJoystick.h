@@ -18,6 +18,10 @@ public:
 	void readJoystick();
 
 	bool readButton(int buttonNumber);
+
+	float checkLeftStickX();
+
+	float checkLeftStickY();
 };
 
 #endif /* SRC_MYJOYSTICK_H_ */
