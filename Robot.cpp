@@ -30,12 +30,16 @@
 
 class Robot: public IterativeRobot
 {
-	RobotDrive perseusDrive;
+	Spark leftSpark;
+	Spark rightSpark;
+	Spark raiseSpark;
+	Spark collectSpark;
+	Spark triggerSpark;
+	RobotDrive theseusDrive;
 	Joystick leftStick;
 	Joystick rightStick;
 	Joystick controller;
-	Spark raiseSpark;
-	Spark collectSpark;
+
 
 	MyJoystick* handheld = NULL;
 
@@ -53,12 +57,15 @@ public:
 	std::string autoSelected;
 
 	Robot() :
-		perseusDrive(PWM0,PWM1),
+		leftSpark(PWM0),
+		rightSpark(PWM1),
+		raiseSpark(PWM2),
+		collectSpark(PWM3),
+		triggerSpark(PWM4),
+		theseusDrive(leftSpark,rightSpark),
 		leftStick(USB0),
 		rightStick(USB1),
-		controller(USB2),
-		raiseSpark(PWM2),
-		collectSpark(PWM3)
+		controller(USB2)
 
 
 	{
@@ -67,7 +74,7 @@ public:
 
 		handheld = new MyJoystick();
 
-		perseusDrive.SetExpiration(0.1);
+		theseusDrive.SetExpiration(0.1);
 
 		chooser = new SendableChooser();
 	}
@@ -124,7 +131,7 @@ public:
 
 	void TeleopPeriodic()
 	{
-		perseusDrive.TankDrive(leftStick, rightStick);
+		theseusDrive.TankDrive(leftStick, rightStick);
 		handheld->readJoystick();
 
 		RunRaise(handheld->readButton(6));
@@ -141,6 +148,7 @@ public:
 			{
 				raiseSpark.Set(0.1); // Will set to negative if necessary
 			}
+			raiseSpark.Set(0.0);
 		}
 	}
 
@@ -152,6 +160,7 @@ public:
 			{
 				raiseSpark.Set(-0.1); // Will set to positive if necessary
 			}
+			raiseSpark.Set(0.0);
 		}
 	}
 
@@ -160,6 +169,8 @@ public:
 		if (collectButton == true)
 		{
 			collectSpark.Set(-0.1); // Will set to positive if necessary
+			Wait(0.5);
+			collectSpark.Set(0.0);
 		}
 	}
 
@@ -168,6 +179,11 @@ public:
 		if (fireButton == true)
 		{
 			collectSpark.Set(0.1); // Will set to negative if necessary
+			Wait(0.5);
+			triggerSpark.Set(0.1);
+			Wait(0.5);
+			collectSpark.Set(0.0);
+			triggerSpark.Set(0.0);
 		}
 	}
 
