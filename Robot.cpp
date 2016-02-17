@@ -45,11 +45,11 @@ class Robot: public IterativeRobot
 	DigitalInput* dio0;
 	DigitalInput* dio1;
 
-	bool raiseLimitSwitch;
-	bool lowerLimitSwitch;
+//	bool raiseLimitSwitch;
+//	bool lowerLimitSwitch;
 
-	bool upSensor;
-	bool downSensor;
+	bool upSensor = true;
+	bool downSensor = true;
 
 	enum {
 		Up,
