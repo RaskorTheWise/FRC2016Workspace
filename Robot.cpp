@@ -30,15 +30,16 @@
 
 class Robot: public IterativeRobot
 {
-	Spark leftDriveSpark;
-	Spark rightDriveSpark;
-	Spark raiseSpark;
-	Spark leftFireSpark;
-	Spark rightFireSpark;
-	RobotDrive theseusDrive;
+	VictorSP leftDriveVictor;
+	VictorSP rightDriveVictor;
+	VictorSP raiseVictor;
+	VictorSP fireVictor;
+	RobotDrive perseusDrive;
 	Joystick leftStick;
 	Joystick rightStick;
 	Joystick controller;
+	Solenoid liftSolenoid;
+	Encoder driveEncoder;
 
 	MyJoystick* handheld = NULL;
 	DigitalInput* dio0;
@@ -47,7 +48,19 @@ class Robot: public IterativeRobot
 	bool raiseLimitSwitch;
 	bool lowerLimitSwitch;
 
-	bool hallSensor;
+	bool upSensor;
+	bool downSensor;
+
+	enum {
+		Up,
+		Down,
+		None
+	} armState = None;
+
+	enum {
+		Activated,
+		Deactivated
+	} liftState = Deactivated;
 
 public:
 	SendableChooser *chooser;
@@ -57,12 +70,11 @@ public:
 	std::string autoSelected;
 
 	Robot() :
-		leftDriveSpark(PWM0),
-		rightDriveSpark(PWM1),
-		raiseSpark(PWM2),
-		leftFireSpark(PWM3),
-		rightFireSpark(PWM4),
-		theseusDrive(leftDriveSpark,rightDriveSpark),
+		leftDriveVictor(PWM0),
+		rightDriveVictor(PWM1),
+		raiseVictor(PWM2),
+		fireVictor(PWM3),
+		perseusDrive(leftDriveVictor,rightDriveVictor),
 		leftStick(USB0),
 		rightStick(USB1),
 		controller(USB2)
@@ -74,7 +86,7 @@ public:
 		handheld = new MyJoystick();
 //		table = NetworkTable::GetTable("GRIP/myContoursReport");
 
-		theseusDrive.SetExpiration(0.1);
+		perseusDrive.SetExpiration(0.1);
 
 		chooser = new SendableChooser();
 	}
@@ -95,7 +107,8 @@ public:
 
 //		raiseLimitSwitch = dio0->Get();
 //		lowerLimitSwitch = dio1->Get();
-		hallSensor = dio0->Get();
+		upSensor = dio0->Get();
+		downSensor = dio1->Get();
 
 	}
 
@@ -131,30 +144,31 @@ public:
 	{
 		handheld->init(&controller);
 //
-//		leftFireSpark.Set(0.5);
+//		fireVictor.Set(0.5);
 //		Wait(0.5);
-//		leftFireSpark.Set(-0.5);
+//		fireVictor.Set(-0.5);
 //		Wait(0.5);
-//		leftFireSpark.Set(0.0);
+//		fireVictor.Set(0.0);
 //
-//		raiseSpark.Set(0.5);
+//		raiseVictor.Set(0.5);
 //		Wait(0.5);
-//		raiseSpark.Set(-0.5);
+//		raiseVictor.Set(-0.5);
 //		Wait(0.5);
-//		raiseSpark.Set(0.0);
+//		raiseVictor.Set(0.0);
 	}
 
 	void TeleopPeriodic()
 	{
-		theseusDrive.TankDrive(leftStick, rightStick);
+		perseusDrive.TankDrive(leftStick, rightStick);
 		handheld->readJoystick();
 
 //		RunRaise_Button(handheld->readButton(6));
 //		RunLower_Button(handheld->readButton(8));
 		RunCollect(handheld->readButton(7));
 		RunFire(handheld->readButton(5));
-		StopFireSparks(handheld->readButton(6));
-		RunAim(handheld->checkLeftStickY());
+		StopFireVictors(handheld->readButton(6));
+		RunAim(handheld->checkLeftStickY(), dio0->Get(), dio1->Get());
+		RunLift(handheld->readButton(2));
 		CheckHallSensor(handheld->readButton(1));
 	}
 
@@ -164,9 +178,9 @@ public:
 //		{
 //			if (!raiseLimitSwitch)
 //			{
-//				raiseSpark.Set(0.1); // Will set to negative if necessary
+//				raiseVictor.Set(0.1); // Will set to negative if necessary
 //			}
-//			raiseSpark.Set(0.0);
+//			raiseVictor.Set(0.0);
 //		}
 //	}
 
@@ -176,45 +190,51 @@ public:
 //		{
 //			if (!lowerLimitSwitch)
 //			{
-//				raiseSpark.Set(-0.1); // Will set to positive if necessary
+//				raiseVictor.Set(-0.1); // Will set to positive if necessary
 //			}
-//			raiseSpark.Set(0.0);
+//			raiseVictor.Set(0.0);
 //		}
 //	}
 
-	void RunAim(float yAxis)
+	void RunAim(bool aimButton, bool upSensor, bool downSensor)
 	{
-		/*
-		 * For future reference, this comment will explain the values below.
-		 * SmartDashboards were for debugging process, no need to use them in the future. There for consistency.
-		 * yAxis float is returned by MyJoystick function CheckLeftStickY(), simple function with simple value.
-		 * We use a range of [-1.0,-0.25) range for upward aim and a range of (0.25,1.0] for downward aim. As per Poh's request, this inverts controls so pushing
-		 * stick forward aims down. The missing range [-0.25,0.25] stops the aim to make it less sensitive.
-		 */
-		SmartDashboard::PutBoolean("RunAim", true);
-		if (yAxis > 0.25)
+		GetArmState(upSensor, downSensor);
+		if (aimButton)
 		{
-			SmartDashboard::PutNumber("yAxis", yAxis);
-			raiseSpark.Set(0.25);
+			if (armState == None || armState == Down)
+			{
+				if (upSensor)
+				{
+					raiseVictor.Set(0.5);
+				}
+				else
+				{
+					raiseVictor.Set(0.0);
+				}
+			}
+			else if (armState == Up)
+			{
+				if (downSensor)
+				{
+					raiseVictor.Set(-0.5);
+				}
+				else
+				{
+					raiseVictor.Set(0.0);
+				}
+			}
 		}
-		else if (yAxis < -0.25)
-		{
-			SmartDashboard::PutNumber("yAxis", yAxis);
-			raiseSpark.Set(-0.25);
-		}
-		else
-		{
-			raiseSpark.Set(0.0);
-		}
-
 	}
 
 	void RunCollect(bool collectButton)
 	{
 		if (collectButton)
 		{
-			leftFireSpark.Set(-0.45);
-			rightFireSpark.Set(-0.45);
+			fireVictor.Set(-0.45);
+		}
+		else
+		{
+			fireVictor.Set(0.0);
 		}
 	}
 
@@ -222,18 +242,19 @@ public:
 	{
 		if (fireButton)
 		{
-			leftFireSpark.Set(1.0);
-			leftFireSpark.Set(1.0);
+			fireVictor.Set(1.0);
+		}
+		else
+		{
+			fireVictor.Set(0.0);
 		}
 	}
 
-	void StopFireSparks(bool stopButton)
+	void StopFireVictors(bool stopButton)
 	{
 		if (stopButton)
 		{
-			leftFireSpark.Set(0.0);
-			leftFireSpark.Set(0.0);
-
+			fireVictor.Set(0.0);
 		}
 	}
 
@@ -241,8 +262,52 @@ public:
 	{
 		if (checkButton)
 		{
-			hallSensor = dio0->Get();
-			SmartDashboard::PutBoolean("Hall Sensor Value", hallSensor);
+			upSensor = dio0->Get();
+			SmartDashboard::PutBoolean("Up Sensor Value", upSensor);
+			downSensor = dio0->Get();
+			SmartDashboard::PutBoolean("Down Sensor Value", downSensor);
+		}
+	}
+
+	void GetArmState(bool upSensor, bool downSensor)
+	{
+		if (!upSensor)
+		{
+			armState = Up;
+		}
+		else if (!downSensor)
+		{
+			armState = Down;
+		}
+		else
+		{
+			armState = None;
+		}
+
+	}
+
+	void GetLiftState(Solenoid lift)
+	{
+		if (lift.Get() == true)
+		{
+			liftState = Activated;
+		}
+		else
+		{
+			liftState = Deactivated;
+		}
+	}
+
+	void RunLift(bool liftButton)
+	{
+		GetLiftState(liftSolenoid);
+		if (liftButton && liftState == Activated)
+		{
+			liftSolenoid.Set(false);
+		}
+		else if (liftButton && liftState == Deactivated)
+		{
+			liftSolenoid.Set(true);
 		}
 	}
 
