@@ -30,47 +30,49 @@
 
 class Robot: public IterativeRobot
 {
-	Spark leftSpark;
-	Spark rightSpark;
+	Spark leftDriveSpark;
+	Spark rightDriveSpark;
 	Spark raiseSpark;
-	Spark collectSpark;
+	Spark leftFireSpark;
+	Spark rightFireSpark;
 	RobotDrive perseusDrive;
 	Joystick leftStick;
 	Joystick rightStick;
 	Joystick controller;
 
-
 	MyJoystick* handheld = NULL;
-
 	DigitalInput* dio0;
 	DigitalInput* dio1;
 
-	bool raiseLimitSwitch = true;
-	bool lowerLimitSwitch = true;
+	bool raiseLimitSwitch;
+	bool lowerLimitSwitch;
+
+	bool hallSensor;
 
 public:
-	LiveWindow *lw = LiveWindow::GetInstance();
 	SendableChooser *chooser;
+//	NetworkTable *table;
 	const std::string autoNameDefault = "Default";
 	const std::string autoNameCustom = "My Auto";
 	std::string autoSelected;
 
 	Robot() :
-		leftSpark(PWM0),
-		rightSpark(PWM1),
+		leftDriveSpark(PWM0),
+		rightDriveSpark(PWM1),
 		raiseSpark(PWM2),
-		collectSpark(PWM3),
-		perseusDrive(leftSpark,rightSpark),
+		leftFireSpark(PWM3),
+		rightFireSpark(PWM4),
+		perseusDrive(leftDriveSpark,rightDriveSpark),
 		leftStick(USB0),
 		rightStick(USB1),
 		controller(USB2)
-
 
 	{
 		dio0 = new DigitalInput(DIO0);
 		dio1 = new DigitalInput(DIO1);
 
 		handheld = new MyJoystick();
+//		table = NetworkTable::GetTable("GRIP/myContoursReport");
 
 		perseusDrive.SetExpiration(0.1);
 
@@ -86,12 +88,15 @@ public:
 
 	void RobotInit()
 	{
+		CameraServer::GetInstance()->StartAutomaticCapture("cam0");
 		chooser->AddDefault(autoNameDefault, (void*)&autoNameDefault);
 		chooser->AddObject(autoNameCustom, (void*)&autoNameCustom);
 		SmartDashboard::PutData("Auto Modes", chooser);
 
-		raiseLimitSwitch = dio0->Get();
-		lowerLimitSwitch = dio1->Get();
+//		raiseLimitSwitch = dio0->Get();
+//		lowerLimitSwitch = dio1->Get();
+		hallSensor = dio0->Get();
+
 	}
 
 
@@ -125,6 +130,18 @@ public:
 	void TeleopInit()
 	{
 		handheld->init(&controller);
+//
+//		leftFireSpark.Set(0.5);
+//		Wait(0.5);
+//		leftFireSpark.Set(-0.5);
+//		Wait(0.5);
+//		leftFireSpark.Set(0.0);
+//
+//		raiseSpark.Set(0.5);
+//		Wait(0.5);
+//		raiseSpark.Set(-0.5);
+//		Wait(0.5);
+//		raiseSpark.Set(0.0);
 	}
 
 	void TeleopPeriodic()
@@ -132,53 +149,106 @@ public:
 		perseusDrive.TankDrive(leftStick, rightStick);
 		handheld->readJoystick();
 
-		RunRaise(handheld->readButton(6));
-		RunLower(handheld->readButton(8));
-		RunCollect(handheld->readButton(5));
-		RunFire(handheld->readButton(7));
+//		RunRaise_Button(handheld->readButton(6));
+//		RunLower_Button(handheld->readButton(8));
+		RunCollect(handheld->readButton(7));
+		RunFire(handheld->readButton(5));
+		StopFireSparks(handheld->readButton(6));
+		RunAim(handheld->checkLeftStickY());
+		CheckHallSensor(handheld->readButton(1));
 	}
 
-	void RunRaise(bool raiseButton)
-	{
-		if (raiseButton == true)
-		{
-			while (raiseLimitSwitch != true)
-			{
-				raiseSpark.Set(0.1); // Will set to negative if necessary
-			}
-		}
-	}
+//	void RunRaise_Button(bool raiseButton)
+//	{
+//		if (raiseButton)
+//		{
+//			if (!raiseLimitSwitch)
+//			{
+//				raiseSpark.Set(0.1); // Will set to negative if necessary
+//			}
+//			raiseSpark.Set(0.0);
+//		}
+//	}
 
-	void RunLower(bool lowerButton)
+//	void RunLower_Button(bool lowerButton)
+//	{
+//		if (lowerButton)
+//		{
+//			if (!lowerLimitSwitch)
+//			{
+//				raiseSpark.Set(-0.1); // Will set to positive if necessary
+//			}
+//			raiseSpark.Set(0.0);
+//		}
+//	}
+
+	void RunAim(float yAxis)
 	{
-		if (lowerButton == true)
+		/*
+		 * For future reference, this comment will explain the values below.
+		 * SmartDashboards were for debugging process, no need to use them in the future. There for consistency.
+		 * yAxis float is returned by MyJoystick function CheckLeftStickY(), simple function with simple value.
+		 * We use a range of [-1.0,-0.25) range for upward aim and a range of (0.25,1.0] for downward aim. As per Poh's request, this inverts controls so pushing
+		 * stick forward aims down. The missing range [-0.25,0.25] stops the aim to make it less sensitive.
+		 */
+		SmartDashboard::PutBoolean("RunAim", true);
+		if (yAxis > 0.25)
 		{
-			while (lowerLimitSwitch != true)
-			{
-				raiseSpark.Set(-0.1); // Will set to positive if necessary
-			}
+			SmartDashboard::PutNumber("yAxis", yAxis);
+			raiseSpark.Set(0.25);
 		}
+		else if (yAxis < -0.25)
+		{
+			SmartDashboard::PutNumber("yAxis", yAxis);
+			raiseSpark.Set(-0.25);
+		}
+		else
+		{
+			raiseSpark.Set(0.0);
+		}
+
 	}
 
 	void RunCollect(bool collectButton)
 	{
-		while (collectButton == true)
+		if (collectButton)
 		{
-			collectSpark.Set(-0.1); // Will set to positive if necessary
+			leftFireSpark.Set(-0.45);
+			rightFireSpark.Set(-0.45);
 		}
 	}
 
 	void RunFire(bool fireButton)
 	{
-		if (fireButton == true)
+		if (fireButton)
 		{
-			collectSpark.Set(0.1); // Will set to negative if necessary
+			leftFireSpark.Set(1.0);
+			leftFireSpark.Set(1.0);
+		}
+	}
+
+	void StopFireSparks(bool stopButton)
+	{
+		if (stopButton)
+		{
+			leftFireSpark.Set(0.0);
+			leftFireSpark.Set(0.0);
+
+		}
+	}
+
+	void CheckHallSensor(bool checkButton)
+	{
+		if (checkButton)
+		{
+			hallSensor = dio0->Get();
+			SmartDashboard::PutBoolean("Hall Sensor Value", hallSensor);
 		}
 	}
 
 	void TestPeriodic()
 	{
-		lw->Run();
+
 	}
 };
 
