@@ -30,10 +30,11 @@
 
 class Robot: public IterativeRobot
 {
-	Spark leftSpark;
-	Spark rightSpark;
+	Spark leftDriveSpark;
+	Spark rightDriveSpark;
 	Spark raiseSpark;
-	Spark collectSpark;
+	Spark leftFireSpark;
+	Spark rightFireSpark;
 	RobotDrive perseusDrive;
 	Joystick leftStick;
 	Joystick rightStick;
@@ -48,17 +49,18 @@ class Robot: public IterativeRobot
 
 public:
 	SendableChooser *chooser;
-//	NetworkTable *table;
+	NetworkTable *table;
 	const std::string autoNameDefault = "Default";
 	const std::string autoNameCustom = "My Auto";
 	std::string autoSelected;
 
 	Robot() :
-		leftSpark(PWM0),
-		rightSpark(PWM1),
+		leftDriveSpark(PWM0),
+		rightDriveSpark(PWM1),
 		raiseSpark(PWM2),
-		collectSpark(PWM3),
-		perseusDrive(leftSpark,rightSpark),
+		leftFireSpark(PWM3),
+		rightFireSpark(PWM4),
+		perseusDrive(leftDriveSpark,rightDriveSpark),
 		leftStick(USB0),
 		rightStick(USB1),
 		controller(USB2)
@@ -124,31 +126,20 @@ public:
 	void TeleopInit()
 	{
 		handheld->init(&controller);
-//
-//		collectSpark.Set(0.5);
-//		Wait(0.5);
-//		collectSpark.Set(-0.5);
-//		Wait(0.5);
-//		collectSpark.Set(0.0);
-//
-//		raiseSpark.Set(0.5);
-//		Wait(0.5);
-//		raiseSpark.Set(-0.5);
-//		Wait(0.5);
-//		raiseSpark.Set(0.0);
 	}
 
 	void TeleopPeriodic()
 	{
-		perseusDrive.TankDrive(handheld->checkLeftStickY(), handheld->checkRightStickY());
+		perseusDrive.TankDrive(handheld->checkRightStickY(), handheld->checkLeftStickY());
 		handheld->readJoystick();
 
+		SmartDashboard::PutNumber("Handheld Twist", handheld->checkRightStickY());
 //		RunRaise_Button(handheld->readButton(6));
 //		RunLower_Button(handheld->readButton(8));
-		RunCollect(handheld->readButton(7));
-		RunFire(handheld->readButton(5));
-		StopCollectSpark(handheld->readButton(6));
-		RunAim(handheld->checkLeftStickY());
+		RunCollect(handheld->readButton(5), handheld->readButton(6));
+		RunFire(handheld->readButton(6), handheld->readButton(5));
+		StopFireSparks(handheld->readButton(3));
+		RunAim();
 	}
 
 //	void RunRaise_Button(bool raiseButton)
@@ -175,47 +166,66 @@ public:
 //		}
 //	}
 
-	void RunAim(float yAxis)
+	void RunAim()
 	{
 		int dpadDirection = handheld->getPOV();
 		SmartDashboard::PutNumber("dpad Direction", dpadDirection);
 
-		if (dpadDirection >= 315 || dpadDirection <= 45) //UP
+		if (dpadDirection != -1)
 		{
-			raiseSpark.Set(-0.25);
+			if (dpadDirection >= 315 || dpadDirection <= 45)
+			{
+				raiseSpark.Set(0.25);
+			}
+			else if (dpadDirection <= 225 && dpadDirection >= 135) //DOWN
+			{
+				raiseSpark.Set(-0.25);
+			}
+			else //STOP
+			{
+				raiseSpark.Set(0.0);
+			}
 		}
-		else if (dpadDirection <= 225 && dpadDirection >= 135) //DOWN
-		{
-			raiseSpark.Set(0.25);
-		}
-		else //STOP
+		else
 		{
 			raiseSpark.Set(0.0);
 		}
-
 	}
 
-	void RunCollect(bool collectButton)
+	void RunCollect(bool collectButton, bool fireButton)
 	{
-		if (collectButton)
+		if (collectButton && !fireButton)
 		{
-			collectSpark.Set(-0.45);
+			leftFireSpark.Set(1.0);
+			rightFireSpark.Set(1.0);
+		}
+		else if (!collectButton && !fireButton)
+		{
+			leftFireSpark.Set(0.0);
+			rightFireSpark.Set(0.0);
 		}
 	}
 
-	void RunFire(bool fireButton)
+	void RunFire(bool fireButton, bool collectButton)
 	{
-		if (fireButton)
+		if (fireButton && !collectButton)
 		{
-			collectSpark.Set(1.0);
+			leftFireSpark.Set(-1.0);
+			rightFireSpark.Set(-1.0);
+		}
+		else if (!fireButton && !collectButton)
+		{
+			leftFireSpark.Set(0.0);
+			rightFireSpark.Set(0.0);
 		}
 	}
 
-	void StopCollectSpark(bool stopButton)
+	void StopFireSparks(bool stopButton)
 	{
 		if (stopButton)
 		{
-			collectSpark.Set(0.0);
+			leftFireSpark.Set(0.0);
+			rightFireSpark.Set(0.0);
 		}
 	}
 
