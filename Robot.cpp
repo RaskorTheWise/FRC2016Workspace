@@ -39,7 +39,7 @@ class Robot: public IterativeRobot
 	Joystick rightStick;
 	Joystick controller;
 	Solenoid liftSolenoid;
-	Encoder driveEncoder;
+//	Encoder driveEncoder;
 
 	MyJoystick* handheld = NULL;
 	DigitalInput* dio0;
@@ -62,6 +62,16 @@ class Robot: public IterativeRobot
 		Deactivated
 	} liftState = Deactivated;
 
+	enum {
+		Step0, //Do nothing
+		Step1, //go under low bar -> line of sight of angled high goal
+		Step2, //rotating toward goal
+		Step3, //moving closer to goal
+		Step4, //aiming up
+		Step5, //firing
+		Done   //finished with auto
+	} autoStep = Step0;
+
 public:
 	SendableChooser *chooser;
 //	NetworkTable *table;
@@ -77,7 +87,9 @@ public:
 		perseusDrive(leftDriveVictor,rightDriveVictor),
 		leftStick(USB0),
 		rightStick(USB1),
-		controller(USB2)
+		controller(USB2),
+		liftSolenoid(DIO2) //--------------------------- Placeholder Values
+//		driveEncoder()  //---------------------|
 
 	{
 		dio0 = new DigitalInput(DIO0);
@@ -101,9 +113,6 @@ public:
 	void RobotInit()
 	{
 		CameraServer::GetInstance()->StartAutomaticCapture("cam0");
-		chooser->AddDefault(autoNameDefault, (void*)&autoNameDefault);
-		chooser->AddObject(autoNameCustom, (void*)&autoNameCustom);
-		SmartDashboard::PutData("Auto Modes", chooser);
 
 //		raiseLimitSwitch = dio0->Get();
 //		lowerLimitSwitch = dio1->Get();
@@ -113,31 +122,66 @@ public:
 	}
 
 
-	/**
-	 * This autonomous (along with the chooser code above) shows how to select between different autonomous modes
-	 * using the dashboard. The sendable chooser code works with the Java SmartDashboard. If you prefer the LabVIEW
-	 * Dashboard, remove all of the chooser code and uncomment the GetString line to get the auto name from the text box
-	 * below the Gyro
-	 *
-	 * You can add additional auto modes by adding additional comparisons to the if-else structure below with additional strings.
-	 * If using the SendableChooser make sure to add them to the chooser code above as well.
-	 */
 	void AutonomousInit()
 	{
-		autoSelected = *((std::string*)chooser->GetSelected());
-		//std::string autoSelected = SmartDashboard::GetString("Auto Selector", autoNameDefault);
-		std::cout << "Auto selected: " << autoSelected << std::endl;
-
-		if(autoSelected == autoNameCustom){
-			//Custom Auto goes here
-		} else {
-			//Default Auto goes here
-		}
+		autoStep = Step0;
 	}
 
 	void AutonomousPeriodic()
 	{
+		if (autoStep == Step0)
+		{
+			autoStep = Step1;
+		}
+		else if (autoStep == Step1)
+		{
+			//Set motors to drive forward for a while. (Needs encoder values? Or try using Wait().)
+			autoStep = Step2;
+		}
+		else if (autoStep == Step2)
+		{
+			//Set left to move forward and right to move backward... for a while. (Use Gyro values? Or try using Wait()...)
+			autoStep = Step3;
+		}
+		else if (autoStep == Step3)
+		{
+			//Move forward for less of a while. (Encoder or Wait())
+			autoStep = Step4;
+		}
+		else if (autoStep == Step4)
+		{
+			//Lift arms up. Use sensors.
+			RunAutoAim(upSensor);
+			if (!upSensor)
+			{
+				autoStep = Step5;
+			}
+		}
+		else if (autoStep == Step5)
+		{
+			//Fire ball into goal. Once. Use Wait()
+			fireVictor.Set(1.0);
+			Wait(0.75);
+			fireVictor.Set(0.0);
+			autoStep = Done;
+		}
+		else
+		{
+			//Set everything to 0.
+		}
+	}
 
+	void RunAutoAim(bool upSensor)
+	{
+		if (upSensor)
+		{
+//			'hunubnhunyhuhn';
+			raiseVictor.Set(0.5);
+		}
+		else
+		{
+			raiseVictor.Set(0.0);
+		}
 	}
 
 	void TeleopInit()
@@ -188,6 +232,9 @@ public:
 //	{
 //		if (lowerButton)
 //		{
+
+
+
 //			if (!lowerLimitSwitch)
 //			{
 //				raiseVictor.Set(-0.1); // Will set to positive if necessary
@@ -286,9 +333,9 @@ public:
 
 	}
 
-	void GetLiftState(Solenoid lift)
+	void GetLiftState()
 	{
-		if (lift.Get() == true)
+		if (liftSolenoid.Get() == true)
 		{
 			liftState = Activated;
 		}
@@ -300,7 +347,7 @@ public:
 
 	void RunLift(bool liftButton)
 	{
-		GetLiftState(liftSolenoid);
+		GetLiftState();
 		if (liftButton && liftState == Activated)
 		{
 			liftSolenoid.Set(false);
