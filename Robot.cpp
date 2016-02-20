@@ -28,18 +28,27 @@
 #define DIO8 8
 #define DIO9 9
 
+#define PCH0 0
+
+#define ANALOG0 0
+
 class Robot: public IterativeRobot
 {
-	VictorSP leftDriveVictor;
-	VictorSP rightDriveVictor;
+	Talon leftDriveTalon;
+	Talon rightDriveTalon;
 	VictorSP raiseVictor;
-	VictorSP fireVictor;
+	Talon leftFireTalon;
+	VictorSP rightFireVictor;
+	VictorSP triggerVictor;
+	VictorSP theArouser1;
+	VictorSP theArouser2;
 	RobotDrive perseusDrive;
 	Joystick leftStick;
 	Joystick rightStick;
 	Joystick controller;
 	Solenoid liftSolenoid;
-//	Encoder driveEncoder;
+	AnalogGyro gyro;
+	Encoder driveEncoder;
 
 	MyJoystick* handheld = NULL;
 	DigitalInput* dio0;
@@ -48,8 +57,10 @@ class Robot: public IterativeRobot
 //	bool raiseLimitSwitch;
 //	bool lowerLimitSwitch;
 
-	bool upSensor = true;
-	bool downSensor = true;
+	bool upThumb = true;
+	bool downThumb = true;
+
+	float gyroAngle;
 
 	enum {
 		Up,
@@ -61,6 +72,12 @@ class Robot: public IterativeRobot
 		Activated,
 		Deactivated
 	} liftState = Deactivated;
+
+	enum {
+		Zero,
+		Positive,
+		Negative
+	} gyroState = Zero;;
 
 	enum {
 		Step0, //Do nothing
@@ -80,20 +97,27 @@ public:
 	std::string autoSelected;
 
 	Robot() :
-		leftDriveVictor(PWM0),
-		rightDriveVictor(PWM1),
-		raiseVictor(PWM2),
-		fireVictor(PWM3),
-		perseusDrive(leftDriveVictor,rightDriveVictor),
+		leftDriveTalon(PWM2),
+		rightDriveTalon(PWM3),
+		raiseVictor(PWM4),
+		leftFireTalon(PWM1),
+		rightFireVictor(PWM5),
+		triggerVictor(PWM6),
+		theArouser1(PWM0),
+		theArouser2(PWM7),
+		perseusDrive(leftDriveTalon,rightDriveTalon),
 		leftStick(USB0),
 		rightStick(USB1),
 		controller(USB2),
-		liftSolenoid(DIO2) //--------------------------- Placeholder Values
-//		driveEncoder()  //---------------------|
+		liftSolenoid(PCH0),
+		driveEncoder(DIO8, DIO9),
+		gyro(ANALOG0)
 
 	{
 		dio0 = new DigitalInput(DIO0);
 		dio1 = new DigitalInput(DIO1);
+
+		gyroAngle = 0;
 
 		handheld = new MyJoystick();
 //		table = NetworkTable::GetTable("GRIP/myContoursReport");
@@ -116,8 +140,11 @@ public:
 
 //		raiseLimitSwitch = dio0->Get();
 //		lowerLimitSwitch = dio1->Get();
-		upSensor = dio0->Get();
-		downSensor = dio1->Get();
+		upThumb = dio0->Get();
+		downThumb = dio1->Get();
+
+		gyro.Reset();
+		driveEncoder.Reset();
 
 	}
 
@@ -125,8 +152,14 @@ public:
 	void AutonomousInit()
 	{
 		autoStep = Step0;
+		gyro.Reset();
+		gyroAngle = gyro.GetAngle();
 	}
 
+	void AutoResetEncoders()
+	{
+		gyro.Reset();
+	}
 	void AutonomousPeriodic()
 	{
 		if (autoStep == Step0)
@@ -151,8 +184,8 @@ public:
 		else if (autoStep == Step4)
 		{
 			//Lift arms up. Use sensors.
-			RunAutoAim(upSensor);
-			if (!upSensor)
+			RunAutoAim(upThumb);
+			if (!upThumb)
 			{
 				autoStep = Step5;
 			}
@@ -160,9 +193,9 @@ public:
 		else if (autoStep == Step5)
 		{
 			//Fire ball into goal. Once. Use Wait()
-			fireVictor.Set(1.0);
+			leftFireTalon.Set(1.0);
 			Wait(0.75);
-			fireVictor.Set(0.0);
+			leftFireTalon.Set(0.0);
 			autoStep = Done;
 		}
 		else
@@ -171,9 +204,9 @@ public:
 		}
 	}
 
-	void RunAutoAim(bool upSensor)
+	void RunAutoAim(bool upThumb)
 	{
-		if (upSensor)
+		if (upThumb)
 		{
 //			'hunubnhunyhuhn';
 			raiseVictor.Set(0.5);
@@ -188,11 +221,11 @@ public:
 	{
 		handheld->init(&controller);
 //
-//		fireVictor.Set(0.5);
+//		leftFireTalon.Set(0.5);
 //		Wait(0.5);
-//		fireVictor.Set(-0.5);
+//		leftFireTalon.Set(-0.5);
 //		Wait(0.5);
-//		fireVictor.Set(0.0);
+//		leftFireTalon.Set(0.0);
 //
 //		raiseVictor.Set(0.5);
 //		Wait(0.5);
@@ -206,14 +239,22 @@ public:
 		perseusDrive.TankDrive(leftStick, rightStick);
 		handheld->readJoystick();
 
+		int driveEncoderValue = driveEncoder.Get();
+		SmartDashboard::PutNumber("Encoder Value", driveEncoder.Get());
+		SmartDashboard::PutNumber("Gyro Value", gyro.GetAngle());
 //		RunRaise_Button(handheld->readButton(6));
 //		RunLower_Button(handheld->readButton(8));
-		RunCollect(handheld->readButton(7));
-		RunFire(handheld->readButton(5));
-		StopFireVictors(handheld->readButton(6));
-		RunAim(handheld->checkLeftStickY(), dio0->Get(), dio1->Get());
-		RunLift(handheld->readButton(2));
-		CheckHallSensor(handheld->readButton(1));
+		RunCollect(handheld->readButton(7), handheld->readButton(5));
+		RunFire(handheld->readButton(5), handheld->readButton(7));
+		StopleftFireTalons(handheld->readButton(3));
+//		RunAim(handheld->checkLeftStickY(), dio0->Get(), dio1->Get());
+		RunAim_TriggerControls(handheld->readButton(6), handheld->readButton(8));
+		RunLiftSolenoid(handheld->readButton(1));
+		RunLiftMotor(handheld->readButton(4));
+		RunTrigger(handheld->readButton(2));
+		CheckAllSensors(handheld->readButton(10));
+//		CheckGyro_Manual(handheld->readButton(10));
+		ResetGyro(handheld->readButton(9));
 	}
 
 //	void RunRaise_Button(bool raiseButton)
@@ -243,14 +284,14 @@ public:
 //		}
 //	}
 
-	void RunAim(bool aimButton, bool upSensor, bool downSensor)
+	void RunAim(bool aimButton, bool upThumb, bool downThumb)
 	{
-		GetArmState(upSensor, downSensor);
+		GetArmState(upThumb, downThumb);
 		if (aimButton)
 		{
 			if (armState == None || armState == Down)
 			{
-				if (upSensor)
+				if (upThumb)
 				{
 					raiseVictor.Set(0.5);
 				}
@@ -261,7 +302,7 @@ public:
 			}
 			else if (armState == Up)
 			{
-				if (downSensor)
+				if (downThumb)
 				{
 					raiseVictor.Set(-0.5);
 				}
@@ -273,56 +314,73 @@ public:
 		}
 	}
 
-	void RunCollect(bool collectButton)
+	void RunCollect(bool collectButton, bool fireButton)
 	{
-		if (collectButton)
+		if (collectButton && !fireButton)
 		{
-			fireVictor.Set(-0.45);
+			leftFireTalon.Set(-0.5);
+			rightFireVictor.Set(0.5);
 		}
-		else
+		else if (!collectButton && !fireButton)
 		{
-			fireVictor.Set(0.0);
+			leftFireTalon.Set(0.0);
+			rightFireVictor.Set(0.0);
 		}
 	}
 
-	void RunFire(bool fireButton)
+	void RunFire(bool fireButton, bool collectButton)
 	{
-		if (fireButton)
+		if (fireButton && !collectButton)
 		{
-			fireVictor.Set(1.0);
+			leftFireTalon.Set(1.0);
+			rightFireVictor.Set(-1.0);
 		}
-		else
+		else if (!fireButton && !collectButton)
 		{
-			fireVictor.Set(0.0);
+			leftFireTalon.Set(0.0);
+			rightFireVictor.Set(0.0);
 		}
 	}
 
-	void StopFireVictors(bool stopButton)
+	void StopleftFireTalons(bool stopButton)
 	{
 		if (stopButton)
 		{
-			fireVictor.Set(0.0);
+			leftFireTalon.Set(0.0);
+			rightFireVictor.Set(0.0);
 		}
 	}
 
-	void CheckHallSensor(bool checkButton)
+	void RunTrigger(bool triggerButton)
+	{
+		if (triggerButton)
+		{
+			triggerVictor.Set(1.0);
+			Wait(1.0);
+			triggerVictor.Set(0.0);
+		}
+	}
+
+	void CheckAllSensors(bool checkButton)
 	{
 		if (checkButton)
 		{
-			upSensor = dio0->Get();
-			SmartDashboard::PutBoolean("Up Sensor Value", upSensor);
-			downSensor = dio0->Get();
-			SmartDashboard::PutBoolean("Down Sensor Value", downSensor);
+			upThumb = dio0->Get();
+			SmartDashboard::PutBoolean("Up Sensor Value", upThumb);
+			downThumb = dio0->Get();
+			SmartDashboard::PutBoolean("Down Sensor Value", downThumb);
+			SmartDashboard::PutNumber("Gyro Value", gyro.GetAngle());
+			SmartDashboard::PutNumber("Encoder Value", driveEncoder.Get());
 		}
 	}
 
-	void GetArmState(bool upSensor, bool downSensor)
+	void GetArmState(bool upThumb, bool downThumb)
 	{
-		if (!upSensor)
+		if (!upThumb)
 		{
 			armState = Up;
 		}
-		else if (!downSensor)
+		else if (!downThumb)
 		{
 			armState = Down;
 		}
@@ -345,16 +403,65 @@ public:
 		}
 	}
 
-	void RunLift(bool liftButton)
+	void RunLiftSolenoid(bool liftButton)
 	{
-		GetLiftState();
-		if (liftButton && liftState == Activated)
+		if (liftButton)
 		{
-			liftSolenoid.Set(false);
+			GetLiftState();
+			if (liftState == Activated)
+			{
+				liftSolenoid.Set(false);
+			}
+			else
+			{
+				liftSolenoid.Set(true);
+			}
 		}
-		else if (liftButton && liftState == Deactivated)
+	}
+
+	void RunLiftMotor(bool liftMotorButton)
+	{
+		if (liftMotorButton)
 		{
-			liftSolenoid.Set(true);
+			theArouser1.Set(-0.5);
+			theArouser2.Set(-0.5);
+		}
+		else
+		{
+			theArouser1.Set(0.0);
+			theArouser2.Set(0.0);
+		}
+	}
+
+	void RunAim_TriggerControls(bool upTrigValue, bool downTrigValue)
+	{
+		if (upTrigValue && !downTrigValue)
+		{
+			raiseVictor.Set(0.5);
+		}
+		else if (!upTrigValue && downTrigValue)
+		{
+			raiseVictor.Set(-0.5);
+		}
+		else
+		{
+			raiseVictor.Set(0.0);
+		}
+	}
+
+//	void CheckGyro_Manual(bool gyroButton)
+//	{
+//		if (gyroButton)
+//		{
+//			SmartDashboard::PutNumber("Gyro Value", gyro.GetAngle());
+//		}
+//	}
+
+	void ResetGyro(bool resetButton)
+	{
+		if (resetButton)
+		{
+			gyro.Reset();
 		}
 	}
 
